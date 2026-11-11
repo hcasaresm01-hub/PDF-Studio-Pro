@@ -1,0 +1,447 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PDF Studio - Editor HD de PDF</title>
+    
+    <!-- PWA Manifest Support para Windows -->
+    <link rel="manifest" href="data:application/manifest+json;charset=utf-8,%7B%22name%22%3A%22PDF%20Studio%22%2C%22short_name%22%3A%22PDFStudio%22%2C%22start_url%22%3A%22.%22%2C%22display%22%3A%22standalone%22%2C%22background_color%22%3A%22%23ffffff%22%2C%22theme_color%22%3A%22%23005fb8%22%7D">
+
+    <!-- Tailwind CSS para diseño moderno -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- PDF.js para renderizado en alta definición -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+    <!-- FontAwesome para iconos -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- jsPDF para exportar anotaciones -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+
+    <script>
+        pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+    </script>
+
+    <style>
+        body {
+            background-color: #f3f4f6;
+            color: #1f2937;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+        }
+        /* Estilo visual Adobe Acrobat */
+        .pdf-viewer-container {
+            background-color: #e5e5e5;
+        }
+        .pdf-page-wrapper {
+            background: white;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.15);
+            margin: 20px auto;
+            position: relative;
+            flex-shrink: 0;
+        }
+        canvas {
+            display: block;
+        }
+        .annotation-canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            pointer-events: auto;
+        }
+    </style>
+</head>
+<body class="h-screen flex flex-col overflow-hidden">
+
+    <!-- BARRA SUPERIOR (TOOLBAR) -->
+    <header class="bg-white border-b border-gray-200 h-16 flex items-center justify-between px-4 z-30 shadow-sm">
+        <div class="flex items-center space-x-3">
+            <div class="bg-blue-600 text-white p-2 rounded-lg shadow-sm">
+                <i class="fa-solid fa-file-pdf text-xl"></i>
+            </div>
+            <div>
+                <h1 class="font-bold text-lg leading-tight">PDF Studio</h1>
+                <p class="text-xs text-gray-500">Editor HD de PDF</p>
+            </div>
+        </div>
+
+        <!-- ACCIONES PRINCIPALES -->
+        <div class="flex items-center space-x-3">
+            <label class="cursor-pointer bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm font-medium shadow-sm transition flex items-center space-x-2">
+                <i class="fa-solid fa-folder-open"></i>
+                <span>Abrir PDF</span>
+                <input type="file" id="file-input" accept=".pdf" class="hidden">
+            </label>
+            <button id="save-btn" class="bg-gray-900 hover:bg-gray-800 text-white px-4 py-2 rounded-lg text-sm font-medium shadow-sm transition flex items-center space-x-2">
+                <i class="fa-solid fa-download"></i>
+                <span>Guardar PDF</span>
+            </button>
+        </div>
+    </header>
+
+    <!-- BARRA DE HERRAMIENTAS DE EDICIÓN -->
+    <div class="bg-white border-b border-gray-200 px-4 py-2 flex items-center justify-between z-20 shadow-sm text-sm">
+        <div class="flex items-center space-x-2">
+            <button data-tool="select" class="tool-btn px-3 py-1.5 rounded-lg bg-blue-50 text-blue-600 font-medium flex items-center space-x-1.5 transition">
+                <i class="fa-solid fa-hand"></i> <span>Ver / Mover</span>
+            </button>
+            <button data-tool="draw" class="tool-btn px-3 py-1.5 rounded-lg text-gray-600 hover:bg-gray-100 font-medium flex items-center space-x-1.5 transition">
+                <i class="fa-solid fa-pen"></i> <span>Dibujar</span>
+            </button>
+            <button data-tool="highlight" class="tool-btn px-3 py-1.5 rounded-lg text-gray-600 hover:bg-gray-100 font-medium flex items-center space-x-1.5 transition">
+                <i class="fa-solid fa-highlighter"></i> <span>Subrayar</span>
+            </button>
+            <button data-tool="text" class="tool-btn px-3 py-1.5 rounded-lg text-gray-600 hover:bg-gray-100 font-medium flex items-center space-x-1.5 transition">
+                <i class="fa-solid fa-font"></i> <span>Escribir</span>
+            </button>
+        </div>
+
+        <!-- CONTROLES DE COLOR Y GROSOR -->
+        <div class="flex items-center space-x-4 border-l pl-4 border-gray-200">
+            <div class="flex items-center space-x-1.5">
+                <button class="color-btn w-5 h-5 rounded-full bg-black ring-2 ring-offset-1 ring-blue-500" data-color="#000000"></button>
+                <button class="color-btn w-5 h-5 rounded-full bg-red-500" data-color="#ef4444"></button>
+                <button class="color-btn w-5 h-5 rounded-full bg-blue-500" data-color="#3b82f6"></button>
+                <button class="color-btn w-5 h-5 rounded-full bg-yellow-400" data-color="#facc15"></button>
+                <button class="color-btn w-5 h-5 rounded-full bg-green-500" data-color="#22c55e"></button>
+            </div>
+            <div class="flex items-center space-x-2 text-gray-500">
+                <i class="fa-solid fa-circle text-[8px]"></i>
+                <input type="range" id="brush-size" min="1" max="20" value="3" class="w-24 accent-blue-600">
+                <span id="brush-size-label" class="text-xs font-mono w-4">3</span>
+            </div>
+        </div>
+
+        <!-- ZOOM Y NAVEGACIÓN -->
+        <div class="flex items-center space-x-2 border-l pl-4 border-gray-200">
+            <button id="zoom-out" class="p-1.5 text-gray-600 hover:bg-gray-100 rounded-lg"><i class="fa-solid fa-magnifying-glass-minus"></i></button>
+            <span id="zoom-level" class="text-xs font-mono w-12 text-center">100%</span>
+            <button id="zoom-in" class="p-1.5 text-gray-600 hover:bg-gray-100 rounded-lg"><i class="fa-solid fa-magnifying-glass-plus"></i></button>
+            <button id="fit-width" class="p-1.5 text-gray-600 hover:bg-gray-100 rounded-lg" title="Ajustar ancho"><i class="fa-solid fa-arrows-to-dot"></i></button>
+            <button id="undo-btn" class="p-1.5 text-gray-600 hover:bg-gray-100 rounded-lg ml-2" title="Deshacer"><i class="fa-solid fa-rotate-left"></i></button>
+            <button id="clear-page-btn" class="p-1.5 text-red-500 hover:bg-red-50 rounded-lg" title="Borrar página actual"><i class="fa-solid fa-trash"></i></button>
+        </div>
+    </div>
+
+    <!-- CUERPO PRINCIPAL -->
+    <div class="flex flex-1 overflow-hidden">
+        
+        <!-- BARRA LATERAL DE MINIATURAS -->
+        <div id="sidebar" class="w-56 bg-white border-r border-gray-200 flex flex-col overflow-y-auto p-3 space-y-3 z-10">
+            <h2 class="text-xs font-bold text-gray-400 uppercase tracking-wider px-1">Páginas</h2>
+            <div id="thumbnails-container" class="space-y-3 flex flex-col items-center">
+                <!-- Miniaturas generadas dinámicamente -->
+            </div>
+        </div>
+
+        <!-- CONTENEDOR VISOR PDF -->
+        <div id="viewer-container" class="pdf-viewer-container flex-1 overflow-auto flex flex-col items-center p-6 relative">
+            <div id="pages-container" class="flex flex-col items-center w-full max-w-4xl space-y-6">
+                <!-- Estado Inicial / Vacío -->
+                <div id="welcome-screen" class="text-center py-24 my-auto">
+                    <div class="inline-block p-6 bg-white rounded-full shadow-sm mb-4 text-blue-600">
+                        <i class="fa-solid fa-cloud-arrow-up text-4xl"></i>
+                    </div>
+                    <h2 class="text-xl font-bold text-gray-700">Arrastra un documento PDF aquí</h2>
+                    <p class="text-sm text-gray-500 mt-1">O haz clic en el botón superior "Abrir PDF"</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- SCRIPT DE FUNCIONALIDAD -->
+    <script>
+        let pdfDoc = null;
+        let scale = 1.25;
+        let currentTool = 'select';
+        let currentColor = '#000000';
+        let currentBrushSize = 3;
+        let pageAnnotations = {}; // Almacena trazos por página
+        let isDrawing = false;
+        let lastX = 0, lastY = 0;
+
+        const fileInput = document.getElementById('file-input');
+        const pagesContainer = document.getElementById('pages-container');
+        const welcomeScreen = document.getElementById('welcome-screen');
+        const thumbnailsContainer = document.getElementById('thumbnails-container');
+
+        // Cargar archivo PDF
+        fileInput.addEventListener('change', async (e) => {
+            const file = e.target.files[0];
+            if (file && file.type === 'application/pdf') {
+                const reader = new FileReader();
+                reader.onload = async function() {
+                    const typedarray = new Uint8Array(this.result);
+                    await loadPDF(typedarray);
+                };
+                reader.readAsArrayBuffer(file);
+            }
+        });
+
+        async function loadPDF(data) {
+            try {
+                const loadingTask = pdfjsLib.getDocument({ data });
+                pdfDoc = await loadingTask.promise;
+                pageAnnotations = {};
+                if(welcomeScreen) welcomeScreen.remove();
+                await renderAllPages();
+            } catch (error) {
+                console.error("Error al cargar el PDF:", error);
+                alert("No se pudo cargar el archivo PDF.");
+            }
+        }
+
+        async function renderAllPages() {
+            pagesContainer.innerHTML = '';
+            thumbnailsContainer.innerHTML = '';
+
+            for (let pageNum = 1; pageNum <= pdfDoc.numPages; pageNum++) {
+                await renderPage(pageNum);
+                renderThumbnail(pageNum);
+            }
+        }
+
+        async function renderPage(pageNum) {
+            const page = await pdfDoc.getPage(pageNum);
+            
+            // Alta definición HiDPI
+            const outputScale = window.devicePixelRatio || 1;
+            const viewport = page.getViewport({ scale: scale });
+
+            const wrapper = document.createElement('div');
+            wrapper.className = 'pdf-page-wrapper';
+            wrapper.style.width = `${viewport.width}px`;
+            wrapper.style.height = `${viewport.height}px`;
+            wrapper.dataset.pageNumber = pageNum;
+
+            // Canvas Principal PDF
+            const canvas = document.createElement('canvas');
+            canvas.width = Math.floor(viewport.width * outputScale);
+            canvas.height = Math.floor(viewport.height * outputScale);
+            canvas.style.width = `${viewport.width}px`;
+            canvas.style.height = `${viewport.height}px`;
+            
+            const context = canvas.getContext('2d');
+            const transform = outputScale !== 1 ? [outputScale, 0, 0, outputScale, 0, 0] : null;
+
+            await page.render({ canvasContext: context, transform: transform, viewport: viewport }).promise;
+            wrapper.appendChild(canvas);
+
+            // Canvas de Anotaciones superpuesto
+            const annotCanvas = document.createElement('canvas');
+            annotCanvas.className = 'annotation-canvas';
+            annotCanvas.width = canvas.width;
+            annotCanvas.height = canvas.height;
+            annotCanvas.style.width = `${viewport.width}px`;
+            annotCanvas.style.height = `${viewport.height}px`;
+            wrapper.appendChild(annotCanvas);
+
+            const annotCtx = annotCanvas.getContext('2d');
+            annotCtx.scale(outputScale, outputScale);
+
+            // Restaurar anotaciones previas si existen
+            if (!pageAnnotations[pageNum]) {
+                pageAnnotations[pageNum] = [];
+            } else {
+                redrawCanvas(annotCtx, pageAnnotations[pageNum], viewport.width, viewport.height);
+            }
+
+            // Manejadores de dibujo y anotación
+            setupAnnotationEvents(annotCanvas, annotCtx, pageNum, viewport);
+
+            pagesContainer.appendChild(wrapper);
+        }
+
+        function setupAnnotationEvents(canvas, ctx, pageNum, viewport) {
+            let drawing = false;
+
+            canvas.addEventListener('mousedown', (e) => {
+                if (currentTool === 'select') return;
+                drawing = true;
+                const rect = canvas.getBoundingClientRect();
+                lastX = e.clientX - rect.left;
+                lastY = e.clientY - rect.top;
+
+                if (currentTool === 'text') {
+                    drawing = false;
+                    addTextPrompt(lastX, lastY, pageNum, viewport);
+                }
+            });
+
+            canvas.addEventListener('mousemove', (e) => {
+                if (!drawing || currentTool === 'select' || currentTool === 'text') return;
+                const rect = canvas.getBoundingClientRect();
+                const x = e.clientX - rect.left;
+                const y = e.clientY - rect.top;
+
+                ctx.beginPath();
+                ctx.moveTo(lastX, lastY);
+                ctx.lineTo(x, y);
+                ctx.strokeStyle = currentTool === 'highlight' ? hexToRgba(currentColor, 0.4) : currentColor;
+                ctx.lineWidth = currentTool === 'highlight' ? currentBrushSize * 3 : currentBrushSize;
+                ctx.lineCap = 'round';
+                ctx.lineJoin = 'round';
+                ctx.stroke();
+
+                pageAnnotations[pageNum].push({
+                    type: currentTool,
+                    x1: lastX, y1: lastY, x2: x, y2: y,
+                    color: currentColor,
+                    size: ctx.lineWidth
+                });
+
+                lastX = x;
+                lastY = y;
+            });
+
+            window.addEventListener('mouseup', () => { drawing = false; });
+        }
+
+        function addTextPrompt(x, y, pageNum, viewport) {
+            const text = prompt("Introduce el texto:");
+            if (!text) return;
+
+            const wrapper = document.querySelector(`[data-page-number="${pageNum}"]`);
+            const annotCanvas = wrapper.querySelector('.annotation-canvas');
+            const ctx = annotCanvas.getContext('2d');
+
+            ctx.font = '16px sans-serif';
+            ctx.fillStyle = currentColor;
+            ctx.fillText(text, x, y);
+
+            pageAnnotations[pageNum].push({
+                type: 'text',
+                text: text,
+                x: x, y: y,
+                color: currentColor
+            });
+        }
+
+        function redrawCanvas(ctx, annotations, width, height) {
+            annotations.forEach(item => {
+                if (item.type === 'draw' || item.type === 'highlight') {
+                    ctx.beginPath();
+                    ctx.moveTo(item.x1, item.y1);
+                    ctx.lineTo(item.x2, item.y2);
+                    ctx.strokeStyle = item.type === 'highlight' ? hexToRgba(item.color, 0.4) : item.color;
+                    ctx.lineWidth = item.size;
+                    ctx.lineCap = 'round';
+                    ctx.lineJoin = 'round';
+                    ctx.stroke();
+                } else if (item.type === 'text') {
+                    ctx.font = '16px sans-serif';
+                    ctx.fillStyle = item.color;
+                    ctx.fillText(item.text, item.x, item.y);
+                }
+            });
+        }
+
+        function hexToRgba(hex, alpha) {
+            let c = hex.replace('#','');
+            if(c.length===3) c = c.split('').map(x => x + x).join('');
+            const num = parseInt(c, 16);
+            return `rgba(${(num>>16)&255}, ${(num>>8)&255}, ${num&255}, ${alpha})`;
+        }
+
+        async function renderThumbnail(pageNum) {
+            const page = await pdfDoc.getPage(pageNum);
+            const viewport = page.getViewport({ scale: 0.2 });
+            const canvas = document.createElement('canvas');
+            canvas.width = viewport.width;
+            canvas.height = viewport.height;
+            canvas.className = 'cursor-pointer rounded border border-gray-200 hover:border-blue-500 shadow-sm transition';
+            
+            await page.render({ canvasContext: canvas.getContext('2d'), viewport }).promise;
+            
+            canvas.addEventListener('click', () => {
+                const targetWrapper = document.querySelector(`[data-page-number="${pageNum}"]`);
+                if(targetWrapper) targetWrapper.scrollIntoView({ behavior: 'smooth' });
+            });
+
+            thumbnailsContainer.appendChild(canvas);
+        }
+
+        // Selección de Herramientas
+        document.querySelectorAll('.tool-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                document.querySelectorAll('.tool-btn').forEach(b => b.classList.remove('bg-blue-50', 'text-blue-600'));
+                btn.classList.add('bg-blue-50', 'text-blue-600');
+                currentTool = btn.dataset.tool;
+            });
+        });
+
+        // Selector de Color
+        document.querySelectorAll('.color-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                document.querySelectorAll('.color-btn').forEach(b => b.classList.remove('ring-2', 'ring-offset-1', 'ring-blue-500'));
+                btn.classList.add('ring-2', 'ring-offset-1', 'ring-blue-500');
+                currentColor = btn.dataset.color;
+            });
+        });
+
+        // Control de Grosor
+        const brushSizeInput = document.getElementById('brush-size');
+        const brushSizeLabel = document.getElementById('brush-size-label');
+        brushSizeInput.addEventListener('input', (e) => {
+            currentBrushSize = e.target.value;
+            brushSizeLabel.textContent = currentBrushSize;
+        });
+
+        // Controles Zoom
+        document.getElementById('zoom-in').addEventListener('click', () => { scale += 0.25; document.getElementById('zoom-level').textContent = Math.round(scale*100)+'%'; if(pdfDoc) renderAllPages(); });
+        document.getElementById('zoom-out').addEventListener('click', () => { if(scale > 0.5) { scale -= 0.25; document.getElementById('zoom-level').textContent = Math.round(scale*100)+'%'; if(pdfDoc) renderAllPages(); } });
+        document.getElementById('fit-width').addEventListener('click', () => {
+            scale = 1.25;
+            document.getElementById('zoom-level').textContent = Math.round(scale*100)+'%';
+            if(pdfDoc) renderAllPages();
+        });
+
+        // Deshacer última acción
+        document.getElementById('undo-btn').addEventListener('click', () => {
+            for (let p in pageAnnotations) {
+                if (pageAnnotations[p].length > 0) {
+                    pageAnnotations[p].pop();
+                }
+            }
+            if(pdfDoc) renderAllPages();
+        });
+
+        // Borrar anotaciones página actual
+        document.getElementById('clear-page-btn').addEventListener('click', () => {
+            pageAnnotations = {};
+            if(pdfDoc) renderAllPages();
+        });
+
+        // Guardar / Exportar PDF anotado
+        document.getElementById('save-btn').addEventListener('click', async () => {
+            if (!pdfDoc) {
+                alert("Primero abre un archivo PDF.");
+                return;
+            }
+            const { jsPDF } = window.jspdf;
+            const pdf = new jsPDF();
+
+            for (let i = 1; i <= pdfDoc.numPages; i++) {
+                if (i > 1) pdf.addPage();
+                const wrapper = document.querySelector(`[data-page-number="${i}"]`);
+                const canvases = wrapper.querySelectorAll('canvas');
+                
+                // Combinar lienzo de PDF y anotaciones
+                const combinedCanvas = document.createElement('canvas');
+                combinedCanvas.width = canvases[0].width;
+                combinedCanvas.height = canvases[0].height;
+                const ctx = combinedCanvas.getContext('2d');
+                
+                ctx.drawImage(canvases[0], 0, 0);
+                ctx.drawImage(canvases[1], 0, 0);
+
+                const imgData = combinedCanvas.toDataURL('image/jpeg', 0.95);
+                const imgProps = pdf.getImageProperties(imgData);
+                const pdfWidth = pdf.internal.pageSize.getWidth();
+                const pdfHeight = (imgProps.height * pdfWidth) / imgProps.width;
+
+                pdf.addImage(imgData, 'JPEG', 0, 0, pdfWidth, pdfHeight);
+            }
+            pdf.save("documento-anotado.pdf");
+        });
+    </script>
+</body>
+</html>
